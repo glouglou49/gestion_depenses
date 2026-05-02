@@ -1,0 +1,16 @@
+services:
+  gestion-depense:
+    build: .
+    container_name: gestion-depense
+    restart: unless-stopped
+    ports:
+      - "6666:80"
+    volumes:
+      - depense-data:/app/data
+    environment:
+      - NODE_ENV=production
+      - DB_PATH=/app/data/frais.db
+      - PORT=80
+
+volumes:
+  depense-data:
