@@ -43,24 +43,24 @@ async function apiFetch(url, options) {
 }
 
 const api = {
-  getSettings: () => apiFetch('/api/settings'),
-  saveSettings: (data) => apiFetch('/api/settings', {
+  getSettings: () => apiFetch('./api/settings'),
+  saveSettings: (data) => apiFetch('./api/settings', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
   }),
-  getExpenses: () => apiFetch('/api/expenses'),
-  addExpense: (name, amount, payer, category, type, date) => apiFetch('/api/expenses', {
+  getExpenses: () => apiFetch('./api/expenses'),
+  addExpense: (name, amount, payer, category, type, date) => apiFetch('./api/expenses', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, amount, payer, category, type, date }),
   }),
-  updateExpense: (id, name, amount, payer, category, type, date) => apiFetch(`/api/expenses/${id}`, {
+  updateExpense: (id, name, amount, payer, category, type, date) => apiFetch(`./api/expenses/${id}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name, amount, payer, category, type, date }),
   }),
-  deleteExpense: (id) => apiFetch(`/api/expenses/${id}`, { method: 'DELETE' }),
+  deleteExpense: (id) => apiFetch(`./api/expenses/${id}`, { method: 'DELETE' }),
 };
 
 // ─── Payer helpers ───────────────────────────────────────────
@@ -819,7 +819,7 @@ export default function App() {
         throw new Error("Aucune donnée valide trouvée dans le fichier.");
       }
 
-      const res = await fetch('/api/backup/import', {
+      const res = await fetch('./api/backup/import', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
