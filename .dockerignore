@@ -4,3 +4,4 @@ dist
 .gitignore
 data
 *.md
+.agents/

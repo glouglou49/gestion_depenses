@@ -1,0 +1,9 @@
+# repository.yaml — Métadonnées du dépôt d'add-ons Home Assistant
+# Ce fichier permet à HA de reconnaître ce dépôt GitHub comme une
+# source d'add-ons valide.
+#
+# ⚠️ Remplacez l'URL par votre propre dépôt GitHub après le push.
+
+name: "Gestion Dépense"
+url: "https://github.com/glouglou49/gestion_depenses"
+maintainer: "glouglou49"

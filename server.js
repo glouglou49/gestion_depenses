@@ -3,6 +3,7 @@ import Database from 'better-sqlite3';
 import cors from 'cors';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { initMqtt, publishStates } from './ha_mqtt.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -66,6 +67,63 @@ function initDB() {
 }
 
 initDB();
+
+// Démarre la connexion MQTT (no-op si MQTT_HOST non défini)
+initMqtt();
+
+// ─── MQTT : calcul des états et publication ───────────────────
+/**
+ * Calcule les totaux depuis la DB et publie les états MQTT.
+ * Reproduit la logique de calcul de App.jsx :
+ *   - totalExpenses = somme de toutes les entrées dont type !== 'advance'
+ *   - virementSuggere = abs(balance de la personne la plus déficitaire)
+ *     où balance = (part théorique) - (avances versées)
+ * Note : sans les salaires configurés, pct1 = pct2 = 50%, ce qui donne
+ *   virementSuggere = |avances1 - avances2| / 2
+ */
+function computeAndPublish() {
+  try {
+    const allExpenses = stmts.getAllExpenses.all();
+
+    // Total des dépenses (hors avances/virements)
+    const totalExpenses = allExpenses
+      .filter(e => e.type !== 'advance')
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+
+    // Avances (virements ponctuels) de chaque personne — tous mois confondus
+    const advances1 = allExpenses
+      .filter(e => e.payer === 'person1' && e.type === 'advance')
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+
+    const advances2 = allExpenses
+      .filter(e => e.payer === 'person2' && e.type === 'advance')
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+
+    // Dépenses directes (hors avances) payées par chaque personne
+    const paid1 = allExpenses
+      .filter(e => e.payer === 'person1' && e.type !== 'advance')
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+
+    const paid2 = allExpenses
+      .filter(e => e.payer === 'person2' && e.type !== 'advance')
+      .reduce((sum, e) => sum + Number(e.amount), 0);
+
+    // Part équitable : 50/50 (sans les salaires disponibles côté serveur)
+    const target = totalExpenses / 2;
+
+    // Balance : positif = doit virer, négatif = a trop avancé
+    const balance1 = target - (paid1 + advances1);
+    const balance2 = target - (paid2 + advances2);
+
+    // Virement suggéré = montant de la régularisation nécessaire
+    // On prend la valeur absolue de la personne déficitaire
+    const virementSuggere = Math.max(Math.abs(balance1), Math.abs(balance2));
+
+    publishStates(totalExpenses, virementSuggere);
+  } catch (err) {
+    console.error('[MQTT] Erreur lors du calcul des états :', err.message);
+  }
+}
 
 // ─── Validation helpers ──────────────────────────────────────
 function validateExpenseInput(name, amount, payer, category, type, date) {
@@ -169,6 +227,7 @@ app.post('/api/expenses', (req, res) => {
     const parsedAmount = Number(amount);
     const result = stmts.addExpense.run(name.trim(), parsedAmount, payer, category, type, date);
     res.status(201).json({ id: result.lastInsertRowid, name: name.trim(), amount: parsedAmount, payer, category, type, date });
+    computeAndPublish();
   } catch (err) {
     console.error('POST /api/expenses error:', err);
     res.status(500).json({ error: 'Failed to add expense' });
@@ -190,6 +249,7 @@ app.put('/api/expenses/:id', (req, res) => {
     const result = stmts.updateExpense.run(name.trim(), parsedAmount, payer, category, type, date, id);
     if (result.changes === 0) return res.status(404).json({ error: 'Expense not found' });
     res.json({ id, name: name.trim(), amount: parsedAmount, payer, category, type, date });
+    computeAndPublish();
   } catch (err) {
     console.error('PUT /api/expenses/:id error:', err);
     res.status(500).json({ error: 'Failed to update expense' });
@@ -205,6 +265,7 @@ app.delete('/api/expenses/:id', (req, res) => {
     const result = stmts.deleteExpense.run(id);
     if (result.changes === 0) return res.status(404).json({ error: 'Expense not found' });
     res.json({ ok: true });
+    computeAndPublish();
   } catch (err) {
     console.error('DELETE /api/expenses/:id error:', err);
     res.status(500).json({ error: 'Failed to delete expense' });
@@ -267,6 +328,7 @@ app.post('/api/backup/import', (req, res) => {
 
     importTx();
     res.json({ success: true, message: 'Restauration réussie avec succès.' });
+    computeAndPublish();
   } catch (error) {
     console.error('Backup Import error:', error);
     res.status(500).json({ error: 'Erreur lors de la restauration: ' + error.message });

@@ -1,0 +1,31 @@
+name: "Gestion Dépense"
+version: "1.0.0"
+slug: "gestion_depense"
+description: "Suivi des dépenses du compte commun avec remontée d'entités dans Home Assistant via MQTT Discovery."
+url: "https://github.com/glouglou49/gestion_depenses"
+
+# Architectures supportées
+arch:
+  - aarch64
+  - amd64
+  - armhf
+  - armv7
+  - i386
+
+# Accès réseau et ingress
+ingress: true
+ingress_port: 80
+panel_icon: mdi:cash-register
+panel_title: "Gestion Dépense"
+
+# Permissions
+hassio_api: true
+auth_api: false
+
+# Services requis
+services:
+  - mqtt:need
+
+# Options de l'add-on (vides, tout est géré via l'UI)
+options: {}
+schema: {}
