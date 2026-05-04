@@ -1,5 +1,5 @@
 name: "Gestion Dépense"
-version: "1.0.5"
+version: "1.0.6"
 slug: "gestion_depense"
 description: "Suivi des dépenses du compte commun avec remontée d'entités dans Home Assistant via MQTT Discovery."
 url: "https://github.com/glouglou49/gestion_depenses"
@@ -28,6 +28,17 @@ auth_api: false
 services:
   - mqtt:need
 
-# Options de l'add-on (vides, tout est géré via l'UI)
-options: {}
-schema: {}
+# Options configurables via l'onglet "Configuration" de l'add-on dans HA
+# Laisser mqtt_host vide = utiliser les variables injectées automatiquement
+# par HA via le service mqtt:need (Mosquitto broker local)
+options:
+  mqtt_host: ""
+  mqtt_port: 1883
+  mqtt_user: ""
+  mqtt_password: ""
+
+schema:
+  mqtt_host: str
+  mqtt_port: int
+  mqtt_user: str
+  mqtt_password: password

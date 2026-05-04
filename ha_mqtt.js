@@ -6,20 +6,45 @@
  *   - sensor.gestion_depense_total_depenses
  *   - sensor.gestion_depense_virement_suggere
  *
- * Utilise les variables d'environnement injectées par HA :
- *   MQTT_HOST, MQTT_USER, MQTT_PASSWORD
- *
- * Graceful degradation : si MQTT_HOST n'est pas défini, le module
- * ne fait rien et l'application démarre normalement (utile en dev local).
+ * Priorité de configuration MQTT :
+ *   1. Options add-on (/data/options.json) — configurées via l'UI HA
+ *   2. Variables d'environnement injectées par HA (services: mqtt:need)
+ *   3. Graceful degradation : pas de MQTT si aucune config trouvée
  */
 
 import mqtt from 'mqtt';
+import { readFileSync } from 'fs';
+
+// ─── Chargement de la configuration ──────────────────────────
+/**
+ * Charge les options depuis /data/options.json (écrit par HA au démarrage)
+ * et les fusionne avec les variables d'environnement.
+ * La valeur dans options.json est prioritaire si elle n'est pas vide.
+ */
+function loadMqttConfig() {
+  let opts = {};
+  try {
+    opts = JSON.parse(readFileSync('/data/options.json', 'utf8'));
+  } catch {
+    // Fichier absent = on est en dev local, pas grave
+  }
+
+  // Pour chaque champ : option UI (si non vide) > env var HA > undefined
+  const host     = opts.mqtt_host     || process.env.MQTT_HOST;
+  const user     = opts.mqtt_user     || process.env.MQTT_USER;
+  const password = opts.mqtt_password || process.env.MQTT_PASSWORD;
+  const port     = opts.mqtt_port     || process.env.MQTT_PORT || 1883;
+
+  return { host, user, password, port };
+}
 
 // ─── Configuration MQTT ───────────────────────────────────────
-const MQTT_HOST     = process.env.MQTT_HOST;
-const MQTT_USER     = process.env.MQTT_USER;
-const MQTT_PASSWORD = process.env.MQTT_PASSWORD;
-const MQTT_PORT     = process.env.MQTT_PORT || 1883;
+const mqttConfig = loadMqttConfig();
+const MQTT_HOST     = mqttConfig.host;
+const MQTT_USER     = mqttConfig.user;
+const MQTT_PASSWORD = mqttConfig.password;
+const MQTT_PORT     = mqttConfig.port;
+
 
 // ─── Topics ───────────────────────────────────────────────────
 const DEVICE_ID = 'gestion_compte_commun';
@@ -83,12 +108,12 @@ let isReady = false;
  */
 export function initMqtt() {
   if (!MQTT_HOST) {
-    console.log('[MQTT] MQTT_HOST non défini — mode sans MQTT (développement local).');
+    console.log('[MQTT] Aucun hôte configuré — mode sans MQTT (configurer dans l\'onglet Configuration de l\'add-on).');
     return;
   }
 
   const brokerUrl = `mqtt://${MQTT_HOST}:${MQTT_PORT}`;
-  console.log(`[MQTT] Connexion au broker : ${brokerUrl}`);
+  console.log(`[MQTT] Connexion au broker : ${brokerUrl} (user: ${MQTT_USER || 'anonyme'})`);
 
   client = mqtt.connect(brokerUrl, {
     username         : MQTT_USER,
