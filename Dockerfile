@@ -24,8 +24,9 @@ COPY server.js ./
 COPY ha_mqtt.js ./
 COPY --from=build /app/dist ./dist
 
-# Script de démarrage HA — créé inline pour éviter les CRLF Windows
-RUN printf '#!/usr/bin/with-contenv bashio\nbashio::log.info "Démarrage de Gestion Dépense..."\nmkdir -p /data\nexec node /app/server.js\n' > /run.sh && chmod a+x /run.sh
+# Script de démarrage — shebang /bin/sh (compatible toutes images HA)
+# Note : with-contenv/bashio ne sont pas dispo dans amd64-base-nodejs
+RUN printf '#!/bin/sh\necho "[gestion_depense] Démarrage..."\nmkdir -p /data\nexec node /app/server.js\n' > /run.sh && chmod a+x /run.sh
 
 # ── Variables d'environnement ─────────────────────────────────
 ENV NODE_ENV=production
@@ -39,4 +40,7 @@ EXPOSE 80
 # VOLUME utile pour Docker standalone uniquement
 VOLUME ["/data"]
 
+# Neutralise l'ENTRYPOINT hérité de la base image Node.js (docker-entrypoint.sh)
+# pour lancer /run.sh directement
+ENTRYPOINT []
 CMD ["/run.sh"]

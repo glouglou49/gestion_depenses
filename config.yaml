@@ -1,5 +1,5 @@
 name: "Gestion Dépense"
-version: "1.0.2"
+version: "1.0.3"
 slug: "gestion_depense"
 description: "Suivi des dépenses du compte commun avec remontée d'entités dans Home Assistant via MQTT Discovery."
 url: "https://github.com/glouglou49/gestion_depenses"
