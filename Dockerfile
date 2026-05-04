@@ -1,3 +1,8 @@
+# ── ARG global : DOIT être avant TOUS les FROM ────────────────
+# HA injecte automatiquement la bonne valeur via build.yaml / build-arg.
+# Pour un build Docker local : --build-arg BUILD_FROM=node:20-alpine
+ARG BUILD_FROM=node:20-alpine
+
 # ── Build stage : compilation du frontend React ───────────────
 FROM node:20-alpine AS build
 WORKDIR /app
@@ -7,10 +12,6 @@ COPY . .
 RUN npm run build
 
 # ── Production stage : image de base Home Assistant ───────────
-# BUILD_FROM est injecté par le builder HA selon l'architecture.
-# Pour un build Docker local standard, passer :
-#   docker build --build-arg BUILD_FROM=node:20-alpine -t gestion-depense .
-ARG BUILD_FROM=node:20-alpine
 FROM $BUILD_FROM
 WORKDIR /app
 
@@ -36,7 +37,7 @@ ENV PORT=80
 EXPOSE 80
 
 # Le dossier /data est géré par HA (persistance automatique)
-# VOLUME non nécessaire en mode add-on HA, mais utile en mode Docker standalone
+# VOLUME utile pour Docker standalone uniquement
 VOLUME ["/data"]
 
 CMD ["/run.sh"]
