@@ -1,0 +1,22 @@
+# Forcer les fins de ligne LF pour tous les scripts shell
+# (évite les CRLF Windows qui cassent les shebangs sous Linux)
+*.sh    text eol=lf
+
+# Fichiers texte standards
+*.js    text eol=lf
+*.jsx   text eol=lf
+*.json  text eol=lf
+*.yaml  text eol=lf
+*.yml   text eol=lf
+*.md    text eol=lf
+*.html  text eol=lf
+*.css   text eol=lf
+
+# Fichiers binaires — pas de conversion
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.db    binary
+*.xlsx  binary

@@ -24,9 +24,8 @@ COPY server.js ./
 COPY ha_mqtt.js ./
 COPY --from=build /app/dist ./dist
 
-# Script de démarrage HA (doit être exécutable)
-COPY run.sh /run.sh
-RUN chmod a+x /run.sh
+# Script de démarrage HA — créé inline pour éviter les CRLF Windows
+RUN printf '#!/usr/bin/with-contenv bashio\nbashio::log.info "Démarrage de Gestion Dépense..."\nmkdir -p /data\nexec node /app/server.js\n' > /run.sh && chmod a+x /run.sh
 
 # ── Variables d'environnement ─────────────────────────────────
 ENV NODE_ENV=production
