@@ -73,29 +73,28 @@ initMqtt();
 
 
 /**
- * Lit la DB, calcule les totaux et régularisations de chaque participant,
- * puis publie les états MQTT.
+ * Calcule les totaux depuis la DB et publie les états MQTT.
  *
- * Pour chaque participant N (1-9) qui a un nom configuré :
- *   - nom           : settings.nameN
- *   - regularisation: (totalDepenses / nbParticipants) - (paid_N + advances_N)
- *                     positif = doit encore payer, négatif = a trop avancé
- *   - avances_mois  : somme des avances (type=advance) du mois courant
+ * LOGIQUE IDENTIQUE À App.jsx :
+ *   - pct_N    = salary_N / totalSalary  (ou 1/N si pas de salaires)
+ *   - target_N = totalDepenses * pct_N
+ *   - regularisation_N = target_N - (paid_N + avancesMois_N)
+ *     où avancesMois = avances type=advance du mois courant uniquement
  */
 function computeAndPublish() {
   try {
     const allExpenses = stmts.getAllExpenses.all();
 
-    // Settings pour récupérer les noms
+    // Lecture des settings (noms + salaires)
     const settingsRows = stmts.getSettings.all();
     const settings = {};
     for (const row of settingsRows) settings[row.key] = row.value;
 
-    // Mois courant au format YYYY-MM
+    // Mois courant YYYY-MM
     const now = new Date();
     const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    // Total dépenses (hors avances)
+    // Total dépenses (hors avances/virements)
     const totalDepenses = allExpenses
       .filter(e => e.type !== 'advance')
       .reduce((sum, e) => sum + Number(e.amount), 0);
@@ -107,28 +106,33 @@ function computeAndPublish() {
       if (!name) continue;
 
       const pid = `person${i}`;
+      // Salaire mensuel (annuel / 12), 0 si non renseigné
+      const salary = (parseFloat(settings[`salary${i}`]) || 0) / 12;
 
+      // Dépenses payées directement (tous mois, hors avances)
       const paid = allExpenses
         .filter(e => e.payer === pid && e.type !== 'advance')
         .reduce((sum, e) => sum + Number(e.amount), 0);
 
-      const advancesAll = allExpenses
-        .filter(e => e.payer === pid && e.type === 'advance')
-        .reduce((sum, e) => sum + Number(e.amount), 0);
-
+      // Avances ponctuelles du mois courant uniquement (= virements)
+      // Identique à App.jsx : punctualAdvances = visibleExpenses (mois filtré)
       const avancesMois = allExpenses
         .filter(e => e.payer === pid && e.type === 'advance'
                   && e.date && e.date.startsWith(currentMonth))
         .reduce((sum, e) => sum + Number(e.amount), 0);
 
-      participants.push({ index: i, name, paid, advancesAll, avancesMois });
+      participants.push({ index: i, name, salary, paid, avancesMois });
     }
 
-    // Part équitable et régularisation
+    // Pourcentage basé sur les salaires (ou égal si aucun salaire)
+    const totalSalary = participants.reduce((sum, p) => sum + p.salary, 0);
     const nb = participants.length || 1;
-    const target = totalDepenses / nb;
+
     for (const p of participants) {
-      p.regularisation = target - (p.paid + p.advancesAll);
+      const pct    = totalSalary > 0 ? p.salary / totalSalary : (1 / nb);
+      const target = totalDepenses * pct;
+      // Régularisation : positif = doit encore payer, négatif = a trop avancé
+      p.regularisation = target - (p.paid + p.avancesMois);
     }
 
     publishStates({ totalDepenses, participants });
@@ -136,6 +140,7 @@ function computeAndPublish() {
     console.error('[MQTT] Erreur lors du calcul des états :', err.message);
   }
 }
+
 
 // ─── Validation helpers ──────────────────────────────────────
 function validateExpenseInput(name, amount, payer, category, type, date) {
