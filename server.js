@@ -71,55 +71,67 @@ initDB();
 // Démarre la connexion MQTT (no-op si MQTT_HOST non défini)
 initMqtt();
 
-// ─── MQTT : calcul des états et publication ───────────────────
+
 /**
- * Calcule les totaux depuis la DB et publie les états MQTT.
- * Reproduit la logique de calcul de App.jsx :
- *   - totalExpenses = somme de toutes les entrées dont type !== 'advance'
- *   - virementSuggere = abs(balance de la personne la plus déficitaire)
- *     où balance = (part théorique) - (avances versées)
- * Note : sans les salaires configurés, pct1 = pct2 = 50%, ce qui donne
- *   virementSuggere = |avances1 - avances2| / 2
+ * Lit la DB, calcule les totaux et régularisations de chaque participant,
+ * puis publie les états MQTT.
+ *
+ * Pour chaque participant N (1-9) qui a un nom configuré :
+ *   - nom           : settings.nameN
+ *   - regularisation: (totalDepenses / nbParticipants) - (paid_N + advances_N)
+ *                     positif = doit encore payer, négatif = a trop avancé
+ *   - avances_mois  : somme des avances (type=advance) du mois courant
  */
 function computeAndPublish() {
   try {
     const allExpenses = stmts.getAllExpenses.all();
 
-    // Total des dépenses (hors avances/virements)
-    const totalExpenses = allExpenses
+    // Settings pour récupérer les noms
+    const settingsRows = stmts.getSettings.all();
+    const settings = {};
+    for (const row of settingsRows) settings[row.key] = row.value;
+
+    // Mois courant au format YYYY-MM
+    const now = new Date();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // Total dépenses (hors avances)
+    const totalDepenses = allExpenses
       .filter(e => e.type !== 'advance')
       .reduce((sum, e) => sum + Number(e.amount), 0);
 
-    // Avances (virements ponctuels) de chaque personne — tous mois confondus
-    const advances1 = allExpenses
-      .filter(e => e.payer === 'person1' && e.type === 'advance')
-      .reduce((sum, e) => sum + Number(e.amount), 0);
+    // Participants avec un nom configuré (1 à 9)
+    const participants = [];
+    for (let i = 1; i <= 9; i++) {
+      const name = settings[`name${i}`];
+      if (!name) continue;
 
-    const advances2 = allExpenses
-      .filter(e => e.payer === 'person2' && e.type === 'advance')
-      .reduce((sum, e) => sum + Number(e.amount), 0);
+      const pid = `person${i}`;
 
-    // Dépenses directes (hors avances) payées par chaque personne
-    const paid1 = allExpenses
-      .filter(e => e.payer === 'person1' && e.type !== 'advance')
-      .reduce((sum, e) => sum + Number(e.amount), 0);
+      const paid = allExpenses
+        .filter(e => e.payer === pid && e.type !== 'advance')
+        .reduce((sum, e) => sum + Number(e.amount), 0);
 
-    const paid2 = allExpenses
-      .filter(e => e.payer === 'person2' && e.type !== 'advance')
-      .reduce((sum, e) => sum + Number(e.amount), 0);
+      const advancesAll = allExpenses
+        .filter(e => e.payer === pid && e.type === 'advance')
+        .reduce((sum, e) => sum + Number(e.amount), 0);
 
-    // Part équitable : 50/50 (sans les salaires disponibles côté serveur)
-    const target = totalExpenses / 2;
+      const avancesMois = allExpenses
+        .filter(e => e.payer === pid && e.type === 'advance'
+                  && e.date && e.date.startsWith(currentMonth))
+        .reduce((sum, e) => sum + Number(e.amount), 0);
 
-    // Balance : positif = doit virer, négatif = a trop avancé
-    const balance1 = target - (paid1 + advances1);
-    const balance2 = target - (paid2 + advances2);
+      participants.push({ index: i, name, paid, advancesAll, avancesMois });
+    }
 
-    // Virement suggéré = montant de la régularisation nécessaire
-    // On prend la valeur absolue de la personne déficitaire
-    const virementSuggere = Math.max(Math.abs(balance1), Math.abs(balance2));
+    // Part équitable et régularisation
+    const nb = participants.length || 1;
+    const target = totalDepenses / nb;
+    for (const p of participants) {
+      p.regularisation = target - (p.paid + p.advancesAll);
+    }
 
-    publishStates(totalExpenses, virementSuggere);
+    publishStates({ totalDepenses, participants });
   } catch (err) {
     console.error('[MQTT] Erreur lors du calcul des états :', err.message);
   }
